@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Government Spending Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #eef2f7;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1, h2 {
+      color: #333;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #status {
+      color: green;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Transparent Government Spending Tracker</h1>
+    <button id="connectBtn">Connect MetaMask</button>
+    <p>Connected Account: <span id="account">Not Connected</span></p>
+
+    <section>
+      <h2>Allocate Budget (Admin Only)</h2>
+      <input id="allocDept" placeholder="Department ID" />
+      <input id="allocAmount" placeholder="Amount in Wei" type="number" />
+      <button onclick="allocateBudget()">Allocate</button>
+    </section>
+
+    <section>
+      <h2>Spend Funds</h2>
+      <input id="spendDept" placeholder="Department ID" />
+      <input id="spendAmount" placeholder="Amount in Wei" type="number" />
+      <button onclick="spendFunds()">Spend</button>
+    </section>
+
+    <section>
+      <h2>Audit Budget</h2>
+      <input id="auditDept" placeholder="Department ID" />
+      <button onclick="auditBudget()">Audit</button>
+      <p id="auditResult"></p>
+    </section>
+
+    <p id="status"></p>
+  </div>
+
+  <script>
+    let web3;
+    let contract;
+    let account;
+
+    const contractAddress = "0x882e81b3278BAfcF446DfA24a3A8577b07fB7dE9"; // Replace with your actual contract address
+    const contractABI =[
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "deptId",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "allocateBudget",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "string",
+				"name": "deptId",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "remainingAmount",
+				"type": "uint256"
+			}
+		],
+		"name": "AuditPerformed",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "string",
+				"name": "deptId",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "BudgetAllocated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "string",
+				"name": "deptId",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "spender",
+				"type": "address"
+			}
+		],
+		"name": "FundsSpent",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "deptId",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "spendFunds",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "admin",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "deptId",
+				"type": "string"
+			}
+		],
+		"name": "auditBudget",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "remaining",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"name": "budgets",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "allocatedAmount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "spentAmount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "exists",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+
+    document.getElementById("connectBtn").onclick = async () => {
+      if (window.ethereum) {
+        web3 = new Web3(window.ethereum);
+        await window.ethereum.enable();
+        const accounts = await web3.eth.getAccounts();
+        account = accounts[0];
+        document.getElementById("account").innerText = account;
+        contract = new web3.eth.Contract(contractABI, contractAddress);
+        setStatus("MetaMask connected");
+      } else {
+        alert("MetaMask not detected");
+      }
+    };
+
+    function setStatus(msg) {
+      document.getElementById("status").innerText = msg;
+    }
+
+    async function allocateBudget() {
+      const dept = document.getElementById("allocDept").value;
+      const amount = document.getElementById("allocAmount").value;
+      try {
+        await contract.methods.allocateBudget(dept, amount).send({ from: account });
+        setStatus(`Budget allocated to ${dept}`);
+      } catch (e) {
+        setStatus("Error allocating budget");
+        console.error(e);
+      }
+    }
+
+    async function spendFunds() {
+      const dept = document.getElementById("spendDept").value;
+      const amount = document.getElementById("spendAmount").value;
+      try {
+        await contract.methods.spendFunds(dept, amount).send({ from: account });
+        setStatus(`Spent ${amount} from ${dept}`);
+      } catch (e) {
+        setStatus("Error spending funds");
+        console.error(e);
+      }
+    }
+
+    async function auditBudget() {
+      const dept = document.getElementById("auditDept").value;
+      try {
+        const remaining = await contract.methods.auditBudget(dept).call({ from: account });
+        document.getElementById("auditResult").innerText = `Remaining Budget: ${remaining} wei`;
+        setStatus("Audit successful");
+      } catch (e) {
+        setStatus("Audit failed");
+        console.error(e);
+      }
+    }
+  </script>
+</body>
+</html>
